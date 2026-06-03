@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with quota allocations and usage logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "plan": { "type": "string", "enum": ["Free", "Pro", "Enterprise"] },
+        "quotaUsed": { "type": "integer" },
+        "quotaLimit": { "type": "integer" },
+        "apiCallsUsed": { "type": "integer" },
+        "apiCallsLimit": { "type": "integer" },
+        "password": { "type": "string" }
+      },
+      "required": ["id", "email", "plan", "quotaUsed", "quotaLimit", "apiCallsUsed", "apiCallsLimit"]
+    },
+    "CompressionJob": {
+      "title": "CompressionJob",
+      "description": "Record of a file compression job",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "originalSize": { "type": "integer" },
+        "compressedSize": { "type": "integer" },
+        "method": { "type": "string", "enum": ["zstd", "WebP", "H.265", "zlib", "none"] },
+        "compressionRatio": { "type": "number" },
+        "savingsPercent": { "type": "integer" },
+        "speedMs": { "type": "integer" },
+        "costSpent": { "type": "number" },
+        "status": { "type": "string", "enum": ["completed", "failed", "processing"] },
+        "userId": { "type": "string" },
+        "aiRecommended": { "type": "boolean" },
+        "storageUrl": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "fileName", "fileType", "originalSize", "compressedSize", "method", "compressionRatio", "savingsPercent", "speedMs", "status", "userId", "aiRecommended"]
+    },
+    "UsageLog": {
+      "title": "UsageLog",
+      "description": "Audit and credit logger for user compression requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "action": { "type": "string" },
+        "bytesProcessed": { "type": "integer" },
+        "creditsCost": { "type": "number" }
+      },
+      "required": ["id", "timestamp", "userId", "action", "bytesProcessed", "creditsCost"]
+    },
+    "AnalyticsEvent": {
+      "title": "AnalyticsEvent",
+      "description": "Captured dynamic analytics events for model insights",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "eventType": { "type": "string" },
+        "payload": { "type": "object" }
+      },
+      "required": ["id", "timestamp", "eventType", "payload"]
+    },
+    "Transfer": {
+      "title": "Transfer",
+      "description": "Record of a file transfer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "recipientEmail": { "type": "string" },
+        "fileName": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "senderEmail", "recipientEmail", "fileName", "downloadUrl", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores user credential hashes, limits and active status"
+    },
+    "/jobs/{jobId}": {
+      "schema": "CompressionJob",
+      "description": "Compression jobs with savings metrics"
+    },
+    "/logs/{logId}": {
+      "schema": "UsageLog",
+      "description": "Audit trails for server requests"
+    },
+    "/analytics/{eventId}": {
+      "schema": "AnalyticsEvent",
+      "description": "Reinforcement learning telemetry"
+    },
+    "/transfers/{transferId}": {
+      "schema": "Transfer",
+      "description": "Record of file transfers"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Fluxstore AI",
+  "description": "Intellectual SaaS platform optimizing cloud storage and bandwidth using zstd, WebP, H.265 compression, and server-side ML decision engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

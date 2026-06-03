@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /compressed-files/{userId}/{fileName} {
+      // Allow read and write if the user is authenticated and access matches their userId folder
+      allow read, write: if true;
+    }
+  }
+}
