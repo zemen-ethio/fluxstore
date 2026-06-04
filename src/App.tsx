@@ -508,7 +508,9 @@ export default function App() {
 
   const executeBackendCompression = async (recipientsList: string[], title: string) => {
     console.log("executeBackendCompression called", { recipientsList, title });
+    console.log("Database instance check:", db);
     try {
+      console.log("Step 1: Starting Firestore Write...");
       let matchedMethod: "zstd" | "WebP" | "H.265" | "zlib" = "zlib";
       if (uploadPreset === "text_doc") matchedMethod = "zlib";
       else if (uploadPreset === "voice") matchedMethod = "zstd";
@@ -537,6 +539,7 @@ export default function App() {
         const transferId = data.job?.id || Math.random().toString(36).substr(2, 9);
         const downloadLink = `https://fluxstore-ai.app/download/${transferId}`;
 
+        console.log("Step 2: Writing to Firestore...");
         await setDoc(doc(db, "transfers", transferId), {
           id: transferId,
           senderEmail: clientAuth.currentUser?.email || "sender@example.com",
@@ -545,6 +548,7 @@ export default function App() {
           downloadUrl: downloadLink,
           timestamp: new Date().toISOString()
         });
+        console.log("Step 3: Firestore write success");
         
         data.job.downloadLink = downloadLink;
         
@@ -584,6 +588,7 @@ export default function App() {
       console.error("Transfer Error:", err);
       setAlertMsg({ type: "error", text: `Error: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
+      console.log("Transfer finished (finally block)");
       setIsTransferring(false);
       setTransferProgress(0);
     }

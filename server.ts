@@ -6,7 +6,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { initializeApp } from "firebase/app";
-import { getFirestore, initializeFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, updateDoc, getDocFromServer } from "firebase/firestore";
+import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, updateDoc, getDocFromServer } from "firebase/firestore";
 import fs from "fs";
 
 dotenv.config();
@@ -22,10 +22,10 @@ try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const firebaseApp = initializeApp(config);
     db = initializeFirestore(firebaseApp, {
-      experimentalForceLongPolling: true,
       databaseId: "(default)",
+      experimentalForceLongPolling: true,
     });
-    console.log("Firebase client initialized successfully with Long Polling.");
+    console.log("Firebase client initialized successfully.");
     
     // Test connection as instructed by skill guidelines (Disabled for now)
     /*
