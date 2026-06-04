@@ -507,9 +507,14 @@ export default function App() {
   };
 
   const executeBackendCompression = async (recipientsList: string[], title: string) => {
+    if (isTransferring) {
+      console.log("Already transferring, skipping.");
+      return;
+    }
     console.log("executeBackendCompression called", { recipientsList, title });
     console.log("Database instance check:", db);
     try {
+      console.log("executeBackendCompression: Starting");
       console.log("Step 1: Starting Firestore Write...");
       let matchedMethod: "zstd" | "WebP" | "H.265" | "zlib" = "zlib";
       if (uploadPreset === "text_doc") matchedMethod = "zlib";
@@ -581,8 +586,18 @@ export default function App() {
           text: `Files sent! Recipients: ${recipientsList.join(", ")}. Download link: ${downloadLink}` 
         });
       } else {
-        const err = await res.json();
-        setAlertMsg({ type: "error", text: err.error || "Compression failed" });
+        const errorText = await res.text();
+        console.error("Compression failed with response:", errorText);
+        let errorMessage = "Compression failed without detailed message";
+        if (errorText) {
+          try {
+            const errData = JSON.parse(errorText);
+            errorMessage = errData.error || errorMessage;
+          } catch {
+            errorMessage = errorText.substring(0, 100);
+          }
+        }
+        setAlertMsg({ type: "error", text: errorMessage });
       }
     } catch (err) {
       console.error("Transfer Error:", err);
@@ -633,6 +648,7 @@ export default function App() {
     }
 
     setIsTransferring(true);
+    console.log("handleWeTransferSubmit: Starting transfer...");
     setTransferProgress(0);
     setAlertMsg(null);
 
@@ -640,9 +656,11 @@ export default function App() {
     const intervalTime = totalSize > 5 * 1024 * 1024 ? 25 : 12;
 
     const interval = setInterval(() => {
+      console.log("Interval: progress =", transferProgress);
       setTransferProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
+          console.log("Interval: reached 100, calling execute");
           setTimeout(() => {
             executeBackendCompression(updatedEmails, transferTitle);
           }, 200);

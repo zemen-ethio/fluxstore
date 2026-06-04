@@ -23,7 +23,6 @@ try {
     const firebaseApp = initializeApp(config);
     db = initializeFirestore(firebaseApp, {
       databaseId: "(default)",
-      experimentalForceLongPolling: true,
     });
     console.log("Firebase client initialized successfully.");
     
