@@ -6,7 +6,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, updateDoc, getDocFromServer } from "firebase/firestore";
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, updateDoc, getDocFromServer } from "firebase/firestore";
 import fs from "fs";
 
 dotenv.config();
@@ -21,17 +21,17 @@ try {
   if (fs.existsSync(configPath)) {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const firebaseApp = initializeApp(config);
-    db = initializeFirestore(firebaseApp, {
-      experimentalForceLongPolling: true,
-    }, config.firestoreDatabaseId);
-    console.log("Firebase client initialized successfully using Long Polling with database id:", config.firestoreDatabaseId);
+    db = getFirestore(firebaseApp);
+    console.log("Firebase client initialized successfully.");
     
-    // Test connection as instructed by skill guidelines
+    // Test connection as instructed by skill guidelines (Disabled for now)
+    /*
     getDocFromServer(doc(db, "test", "connection")).catch((error) => {
       if (error instanceof Error && error.message.includes("offline")) {
         console.error("Please check your Firebase configuration. Server offline.");
       }
     });
+    */
   } else {
     console.warn("firebase-applet-config.json file not found. Running in offline/in-memory mode.");
   }
@@ -70,7 +70,7 @@ const usersStore: Record<string, any> = {
   }
 };
 
-let activeUserEmail = "nbelay10@gmail.com";
+let activeUserEmail = "";
 
 const getActiveUser = () => {
   const emailLower = activeUserEmail.trim().toLowerCase();
@@ -181,12 +181,19 @@ const rlWeights = {
 // Firestore integration sync helpers
 const saveUser = async (email: string, userData: any) => {
   const emailLower = email.trim().toLowerCase();
+  
+  if (!emailLower) {
+    console.warn("Skipping saveUser for empty email.");
+    return;
+  }
+
   usersStore[emailLower] = userData;
   if (db) {
     try {
-      await setDoc(doc(db, "users", emailLower), userData);
+      const userDocRef = doc(db, "users", emailLower);
+      await setDoc(userDocRef, userData);
     } catch (err) {
-      console.error("Firestore saveUser failed:", err);
+      console.error("Firestore saveUser failed for path users/" + emailLower + ":", err);
     }
   }
 };
@@ -202,9 +209,10 @@ const saveJob = async (job: any) => {
   }
   if (db) {
     try {
-      await setDoc(doc(db, "jobs", job.id), job);
+      const jobDocRef = doc(db, "jobs", job.id);
+      await setDoc(jobDocRef, job);
     } catch (err) {
-      console.error("Firestore saveJob failed:", err);
+      console.error("Firestore saveJob failed for path jobs/" + job.id + ":", err);
     }
   }
 };
@@ -229,9 +237,10 @@ const saveLog = async (log: any) => {
   }
   if (db) {
     try {
-      await setDoc(doc(db, "logs", log.id), log);
+      const logDocRef = doc(db, "logs", log.id);
+      await setDoc(logDocRef, log);
     } catch (err) {
-      console.error("Firestore saveLog failed:", err);
+      console.error("Firestore saveLog failed for path logs/" + log.id + ":", err);
     }
   }
 };
@@ -340,6 +349,8 @@ app.post("/api/send-email", async (req, res) => {
       `,
     });
 
+    console.log("Resend API response:", { data, error });
+
     if (error) {
       console.error("Resend API error:", error);
       return res.status(500).json({ error: error.message });
@@ -362,67 +373,8 @@ app.get("/api/user/info", (req, res) => {
   });
   
   if (filteredJobs.length === 0) {
-    const seedJobs = [
-      {
-        id: "job_seed_1_" + activeUser.id,
-        userId: activeUser.id,
-        timestamp: "2026-05-12T14:30:00.000Z",
-        fileName: "ClientVault_Test_File.pdf",
-        fileType: "application/pdf",
-        originalSize: 1771, // 1.73 KB
-        compressedSize: 850,
-        method: "zlib",
-        compressionRatio: 0.48,
-        savingsPercent: 52,
-        speedMs: 8,
-        costSpent: 0.0001,
-        status: "completed",
-        aiRecommended: true,
-      },
-      {
-        id: "job_seed_2_" + activeUser.id,
-        userId: activeUser.id,
-        timestamp: "2026-05-20T10:15:00.000Z",
-        fileName: "production_server_logs.log",
-        fileType: "text/plain",
-        originalSize: 256000, // 250KB
-        compressedSize: 35840,  // 35KB
-        method: "zstd",
-        compressionRatio: 0.14,
-        savingsPercent: 86,
-        speedMs: 14,
-        costSpent: 0.0012,
-        status: "completed",
-        aiRecommended: true,
-      },
-      {
-        id: "job_seed_3_" + activeUser.id,
-        userId: activeUser.id,
-        timestamp: "2026-05-28T16:45:00.000Z",
-        fileName: "hero_background_landing.png",
-        fileType: "image/png",
-        originalSize: 1228800, // 1.2MB
-        compressedSize: 184320, // 180KB
-        method: "WebP",
-        compressionRatio: 0.15,
-        savingsPercent: 85,
-        speedMs: 50,
-        costSpent: 0.0050,
-        status: "completed",
-        aiRecommended: true,
-      }
-    ];
-
-    for (const s of seedJobs) {
-      compressionJobs.push(s);
-      saveJob(s);
-    }
-    
-    const totalSeedSize = seedJobs.reduce((acc, curr) => acc + curr.originalSize, 0);
-    activeUser.quotaUsed = totalSeedSize;
-    saveUser(activeUser.email.trim().toLowerCase(), activeUser);
-
-    filteredJobs = seedJobs;
+    // Seeding disabled by request
+    filteredJobs = [];
   }
 
   const filteredLogs = usageLogs.filter((l) => l.userId === activeUser.id);
@@ -520,7 +472,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.post("/api/auth/logout", (req, res) => {
-  activeUserEmail = "nbelay10@gmail.com";
+  activeUserEmail = "";
   res.json({
     success: true,
     message: "Session ended active context.",

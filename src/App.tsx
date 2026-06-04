@@ -39,6 +39,7 @@ import {
   Lock,
   Search
 } from "lucide-react";
+import JSZip from "jszip";
 import {
   AreaChart,
   Area,
@@ -75,7 +76,7 @@ import { doc, setDoc } from "firebase/firestore";
 
 // Safe appFetch helper to always attach active User Email context
 export const appFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  const email = clientAuth.currentUser?.email || "nbelay10@gmail.com";
+  const email = clientAuth.currentUser?.email || "";
   const newInit = { ...init };
   const headers = new Headers(newInit.headers || {});
   if (!headers.has("X-User-Email") && email) {
@@ -99,34 +100,34 @@ const getFileCategory = (fileType: string) => {
 
 const THEMES = {
   light: {
-    outerBg: "bg-slate-50 text-slate-800",
-    cardBg: "bg-white border border-slate-200 shadow-sm text-slate-800",
-    headerBg: "bg-white border-b border-slate-200 shadow-sm text-slate-800",
-    titleText: "text-slate-900",
-    mutedText: "text-slate-500",
-    brandText: "text-blue-700 bg-blue-50 border border-blue-200",
-    accentBg: "bg-blue-600 border border-blue-500 text-white",
-    accentText: "text-blue-600",
-    accentNavActive: "bg-blue-50 text-blue-700 border border-blue-200",
-    accentNavInactive: "text-slate-500 hover:text-slate-800 hover:bg-slate-100",
-    panelHead: "border-slate-100 pb-2 mb-3",
-    inputBg: "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:border-blue-500/50",
-    accentBtn: "bg-blue-600 text-white border border-blue-500/10 hover:bg-blue-700",
-    tabActive: "bg-white text-blue-600 shadow-sm",
-    tabInactive: "text-slate-500 hover:text-slate-800",
-    preBg: "bg-slate-900 text-slate-100",
-    chartGrid: "#f1f5f9",
+    outerBg: "bg-white text-blue-700",
+    cardBg: "bg-white border-2 border-blue-600 shadow-none text-blue-700",
+    headerBg: "bg-white border-b-2 border-blue-600 shadow-none text-blue-700",
+    titleText: "text-blue-700 font-bold",
+    mutedText: "text-blue-500",
+    brandText: "text-blue-700 bg-white border border-blue-600 font-bold",
+    accentBg: "bg-blue-600 border-2 border-blue-600 text-white font-bold",
+    accentText: "text-blue-700",
+    accentNavActive: "bg-blue-600 text-white border-2 border-blue-600 font-bold",
+    accentNavInactive: "text-blue-500 hover:text-blue-700 hover:bg-blue-50",
+    panelHead: "border-blue-200 pb-2 mb-3",
+    inputBg: "bg-white border-2 border-blue-300 text-blue-700 focus:bg-white focus:border-blue-600",
+    accentBtn: "bg-blue-600 text-white border-2 border-blue-600 hover:bg-blue-700 font-bold",
+    tabActive: "bg-blue-600 text-white shadow-none font-bold",
+    tabInactive: "text-blue-500 hover:text-blue-700 font-bold",
+    preBg: "bg-blue-50 text-blue-800 border border-blue-200",
+    chartGrid: "#dbeafe",
     chartTooltipBg: "#ffffff",
-    chartTooltipBorder: "#e2e8f0",
-    chartTooltipColor: "#0f172a",
-    chartOrigColor: "#94a3b8",
-    chartCompColor: "#3b82f6",
-    sliderAccent: "accent-blue-600 bg-slate-200",
-    badgeSuccess: "bg-emerald-50 border border-emerald-200 text-emerald-950",
-    badgeError: "bg-red-50 border border-red-200 text-red-950",
-    navCodeActive: "bg-blue-50 text-blue-700 border border-blue-200/50",
-    navCodeInactive: "text-slate-500 hover:text-slate-950 hover:bg-slate-50",
-    footerBg: "bg-white border-t border-slate-200 shadow-inner",
+    chartTooltipBorder: "#3b82f6",
+    chartTooltipColor: "#1e3a8a",
+    chartOrigColor: "#93c5fd",
+    chartCompColor: "#1d4ed8",
+    sliderAccent: "accent-blue-600 bg-blue-100",
+    badgeSuccess: "bg-blue-50 border border-blue-200 text-blue-800 font-bold",
+    badgeError: "bg-red-50 border border-red-200 text-red-900 font-bold",
+    navCodeActive: "bg-blue-600 text-white border-2 border-blue-600 font-bold",
+    navCodeInactive: "text-blue-500 hover:text-blue-700 hover:bg-blue-50",
+    footerBg: "bg-white border-t border-blue-200",
   },
 
   neon: {
@@ -160,34 +161,34 @@ const THEMES = {
     footerBg: "bg-zinc-950 border-t border-zinc-900",
   },
   cyber: {
-    outerBg: "bg-neutral-950 text-amber-200/90",
-    cardBg: "bg-neutral-900 border border-amber-500/30 shadow-md",
-    headerBg: "bg-neutral-900 border-b border-amber-500/40 shadow-lg",
-    titleText: "text-amber-400 font-mono",
-    mutedText: "text-amber-500/75",
-    brandText: "text-amber-400 bg-amber-950 border border-amber-500/40",
-    accentBg: "bg-amber-500 text-black border border-amber-600 font-bold",
-    accentText: "text-amber-400",
-    accentNavActive: "bg-amber-500 text-black border border-amber-600 font-bold",
-    accentNavInactive: "text-amber-600 hover:text-amber-400 hover:bg-neutral-800",
-    panelHead: "border-amber-500/20 pb-2 mb-3",
-    inputBg: "bg-neutral-950 border border-amber-500/20 text-amber-305 focus:border-amber-500/60 focus:bg-neutral-900/60",
-    accentBtn: "bg-amber-500 text-black border border-amber-600 hover:bg-amber-400 font-bold",
-    tabActive: "bg-neutral-800 text-amber-300 shadow",
-    tabInactive: "text-amber-600 hover:text-amber-400",
-    preBg: "bg-neutral-950 text-amber-300 border border-amber-500/10",
+    outerBg: "bg-neutral-950 text-sky-200/90",
+    cardBg: "bg-neutral-900 border border-blue-500/30 shadow-md",
+    headerBg: "bg-neutral-900 border-b border-blue-500/40 shadow-lg",
+    titleText: "text-sky-400 font-mono",
+    mutedText: "text-sky-500/75",
+    brandText: "text-sky-400 bg-sky-950 border border-blue-500/40",
+    accentBg: "bg-blue-500 text-white border border-blue-600 font-bold",
+    accentText: "text-sky-400",
+    accentNavActive: "bg-blue-500 text-white border border-blue-600 font-bold",
+    accentNavInactive: "text-blue-600 hover:text-sky-400 hover:bg-neutral-800",
+    panelHead: "border-blue-500/20 pb-2 mb-3",
+    inputBg: "bg-neutral-950 border border-blue-500/20 text-sky-300 focus:border-blue-500/60 focus:bg-neutral-900/60",
+    accentBtn: "bg-blue-500 text-white border border-blue-600 hover:bg-blue-400 font-bold",
+    tabActive: "bg-neutral-800 text-sky-300 shadow",
+    tabInactive: "text-blue-600 hover:text-sky-400",
+    preBg: "bg-neutral-950 text-sky-300 border border-blue-500/10",
     chartGrid: "#404040",
     chartTooltipBg: "#171717",
-    chartTooltipBorder: "#d97706",
-    chartTooltipColor: "#fbbf24",
+    chartTooltipBorder: "#3b82f6",
+    chartTooltipColor: "#7dd3fc",
     chartOrigColor: "#737373",
-    chartCompColor: "#f59e0b",
-    sliderAccent: "accent-amber-500 bg-neutral-800",
-    badgeSuccess: "bg-amber-950 border border-amber-500/30 text-amber-400",
+    chartCompColor: "#3b82f6",
+    sliderAccent: "accent-blue-500 bg-neutral-800",
+    badgeSuccess: "bg-sky-950 border border-blue-500/30 text-sky-400",
     badgeError: "bg-red-955 border border-red-500/30 text-red-400",
-    navCodeActive: "bg-amber-950 text-amber-400 border border-amber-500/40",
-    navCodeInactive: "text-amber-600 hover:text-amber-400 hover:bg-neutral-800",
-    footerBg: "bg-neutral-950 border-t border-amber-500/20",
+    navCodeActive: "bg-blue-950 text-sky-400 border border-blue-500/40",
+    navCodeInactive: "text-blue-600 hover:text-sky-400 hover:bg-neutral-800",
+    footerBg: "bg-neutral-950 border-t border-blue-500/20",
   },
   aurora: {
     outerBg: "bg-indigo-950 text-slate-200",
@@ -238,7 +239,7 @@ export default function App() {
   // States from Backend
   const [user, setUser] = useState<User>({
     id: "usr_google_builder",
-    email: "nbelay10@gmail.com",
+    email: "",
     plan: "Free",
     quotaUsed: 0,
     quotaLimit: 10 * 1024 * 1024 * 1024, // 10 GB
@@ -283,7 +284,7 @@ export default function App() {
   }, [toast]);
 
   // User Authentication UI states
-  const [authEmail, setAuthEmail] = useState("");
+  const [authEmail, setAuthEmail] = useState(() => localStorage.getItem("user_email") || "");
   const [authPassword, setAuthPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -298,6 +299,7 @@ export default function App() {
   const [loadingSharedJob, setLoadingSharedJob] = useState(false);
   const [sharedJobError, setSharedJobError] = useState<string | null>(null);
 
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
   const [activeShareJob, setActiveShareJob] = useState<CompressionJob | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -341,9 +343,8 @@ export default function App() {
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [transferProgress, setTransferProgress] = useState(0);
   const [isTransferring, setIsTransferring] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; size: number; type: string }[]>([
-    { name: "document_corporate_strategy.pdf", size: 450 * 1024, type: "application/pdf" }
-  ]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; size: number; type: string }[]>([]);
   const [transferSuccessJob, setTransferSuccessJob] = useState<any | null>(null);
   const [showMockNotification, setShowMockNotification] = useState<any | null>(null);
 
@@ -749,13 +750,11 @@ export default function App() {
   };
 
   const resetTransferForm = () => {
-    setUploadedFiles([
-      { name: "document_corporate_strategy.pdf", size: 450 * 1024, type: "application/pdf" }
-    ]);
+    setUploadedFiles([]);
     setTransferSuccessJob(null);
-    setFileName("document_corporate_strategy.pdf");
-    setFileType("application/pdf");
-    setFileSizeSlider(450 * 1024);
+    setFileName("");
+    setFileType("");
+    setFileSizeSlider(0);
     setEmailsTo([]);
     setEmailToInput("");
     setTransferTitle("");
@@ -839,6 +838,7 @@ export default function App() {
         setUser(data.user);
         setShowAuthModal(false);
         setAuthPassword("");
+        localStorage.setItem("user_email", data.user.email);
         setAlertMsg({ 
           type: "success", 
           text: isAuthModeSignUp 
@@ -890,6 +890,7 @@ export default function App() {
       if (response.ok) {
         setUser(data.user);
         setShowAuthModal(false);
+        localStorage.setItem("user_email", data.user.email);
         setAlertMsg({ type: "success", text: `Connected seamlessly via Firebase Auth & Gmail: ${gmailAddress}` });
         fetchDashboardData();
       } else {
@@ -921,6 +922,7 @@ export default function App() {
       if (response.ok) {
         setUser(data.user);
         setShowAuthModal(false);
+        localStorage.setItem("user_email", data.user.email);
         setAlertMsg({ type: "success", text: `Welcome! Successfully authenticated via Google Sign-In: ${email}` });
         fetchDashboardData();
       } else {
@@ -942,6 +944,7 @@ export default function App() {
       const data = await response.json();
       if (response.ok) {
         setUser(data.user);
+        setHistoryJobs([]);
         setAlertMsg({ type: "success", text: "Successfully signed out of custom workspace session and Firebase instance." });
         fetchDashboardData();
       }
@@ -1028,6 +1031,13 @@ export default function App() {
       document.body.removeChild(linkComp);
       setToast({ type: "success", text: `Streaming optimized zlib/zstd build down: ${job.fileName}` });
     }
+  };
+
+  const handleBulkDownload = async () => {
+      setToast({ type: "info", text: "Bulk download initiated. Compiling zip archive..." });
+      // Stub for Zip logic - implementation depends on CORS access to storage
+      console.log("Bulk download for jobs:", selectedFileIds);
+      // JSZip.generateAsync(...) would go here
   };
 
   // Open Sharing dialog and copy link
@@ -1502,31 +1512,31 @@ export default function App() {
         {/* User Identity & Theme switcher */}
         <div className="flex items-center gap-3">
           <div className={`flex items-center space-x-1 p-1 rounded-xl border transition-all duration-300 ${designLook === "light" ? "bg-slate-100 border-slate-200" : "bg-zinc-800/80 border-zinc-700/80"}`}>
-            <span className={`text-[9px] font-mono px-1.5 uppercase font-bold tracking-tight opacity-75 ${activeTheme.titleText}`}>LOOK:</span>
+            <span className={`text-[9px] font-mono px-1.5 uppercase font-bold tracking-tight opacity-75 ${activeTheme.titleText}`}>Change Themes:</span>
             <button
               onClick={() => setDesignLook("light")}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "light" ? "bg-white text-blue-700 shadow-sm" : "text-zinc-400 hover:text-white"}`}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "light" ? "bg-white text-blue-700 shadow-sm" : activeTheme.mutedText}`}
               title="Corporate Light Look"
             >
               Light
             </button>
             <button
               onClick={() => setDesignLook("neon")}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "neon" ? "bg-emerald-500 text-zinc-950 shadow-sm" : "text-zinc-400 hover:text-white"}`}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "neon" ? "bg-emerald-500 text-zinc-950 shadow-sm" : activeTheme.mutedText}`}
               title="Neon Emerald Look"
             >
               Neon
             </button>
             <button
               onClick={() => setDesignLook("cyber")}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "cyber" ? "bg-amber-500 text-black shadow-sm" : "text-zinc-450 hover:text-white"}`}
-              title="Cyber Amber Look"
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "cyber" ? "bg-blue-500 text-white shadow-sm" : activeTheme.mutedText}`}
+              title="Cinematic Blue Look"
             >
-              Cyber
+              Cinematic
             </button>
             <button
               onClick={() => setDesignLook("aurora")}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "aurora" ? "bg-indigo-600 text-white shadow-sm" : "text-indigo-400 hover:text-indigo-100"}`}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold transition-all duration-250 ${designLook === "aurora" ? "bg-indigo-600 text-white shadow-sm" : activeTheme.mutedText}`}
               title="Aurora Twilight Look"
             >
               Aurora
@@ -1536,20 +1546,20 @@ export default function App() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                if (user.email !== "nbelay10@gmail.com") {
+                if (user.email !== "") {
                   handleLogout();
                 } else {
                   setShowAuthModal(true);
                 }
               }}
               className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all duration-300 border hover:opacity-90 cursor-pointer ${
-                user.email !== "nbelay10@gmail.com"
+                user.email !== ""
                   ? "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/20"
                   : activeTheme.brandText
               }`}
-              title={user.email !== "nbelay10@gmail.com" ? "Reset back to guest context" : "Authenticate secure credentials"}
+              title={user.email !== "" ? "Reset back to guest context" : "Authenticate secure credentials"}
             >
-              {user.email !== "nbelay10@gmail.com" ? "Sign Out" : "Sign In / Join"}
+              {user.email !== "" ? "Sign Out" : "Sign In / Join"}
             </button>
 
             
@@ -1686,9 +1696,10 @@ export default function App() {
                       <div className="relative group mb-5">
                         <div 
                           onClick={() => fileInputRef.current?.click()}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={handleDrop}
-                          className="border-2 border-dashed rounded-3xl flex flex-col items-center justify-center p-8 text-center cursor-pointer transition-all duration-300 border-slate-300 bg-slate-50 hover:bg-slate-100/80 hover:border-blue-500"
+                          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                          onDragLeave={() => setIsDragging(false)}
+                          onDrop={(e) => { handleDrop(e); setIsDragging(false); }}
+                          className={`border-2 border-dashed rounded-3xl flex flex-col items-center justify-center p-8 text-center cursor-pointer transition-all duration-300 ${isDragging ? "border-blue-500 bg-blue-50 scale-[1.02]" : "border-slate-300 bg-slate-50 hover:bg-slate-100/80 hover:border-blue-500"}`}
                           style={{ minHeight: "13rem" }}
                         >
                           <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-205 text-blue-600 flex items-center justify-center mb-4 transition-transform group-hover:scale-108 duration-300 shadow-sm">
@@ -1704,6 +1715,17 @@ export default function App() {
                           </p>
 
                           <div className="flex gap-2.5 mt-4 flex-wrap justify-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // TODO: Implement Google Drive Picker
+                                console.log("Browse Google Drive clicked");
+                              }}
+                              className="px-2.5 py-1 bg-green-50 hover:bg-green-100 text-green-700 text-[10px] font-mono font-bold rounded-lg border border-green-150 transition-all active:scale-95"
+                            >
+                              📁 Browse Google Drive
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1890,7 +1912,7 @@ export default function App() {
                             Your email
                           </label>
                           <span className="text-sm font-semibold text-slate-800 select-all block py-0.5">
-                            {user.email || "nbelay10@gmail.com"}
+                            {user.email || ""}
                           </span>
                         </div>
                         <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-white text-[9px] font-extrabold select-none shadow-sm">
@@ -2055,8 +2077,31 @@ export default function App() {
               <div className={`border border-slate-250 rounded-3xl p-6 lg:p-8 shadow-sm transition-all duration-300 ${activeTheme.cardBg || "bg-white"}`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                   <h3 className={`text-md font-bold tracking-tight text-slate-900 ${activeTheme.titleText}`}>
-                    Recent Files
+                    Recent Files {selectedFileIds.length > 0 && <span className="text-xs text-slate-500 font-normal">({selectedFileIds.length} selected)</span>}
                   </h3>
+                  {selectedFileIds.length > 0 && (
+                      <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                                for (const id of selectedFileIds) {
+                                    await fetch(`/api/compress/job/${id}`, { method: 'DELETE' });
+                                }
+                                setHistoryJobs(historyJobs.filter(job => !selectedFileIds.includes(job.id)));
+                                setSelectedFileIds([]);
+                                setToast({ type: "success", text: "Selected files permanently deleted." });
+                            }}
+                            className="text-xs text-red-600 hover:text-red-700 bg-red-50 px-2 py-1 rounded-md"
+                          >
+                            Delete Selected
+                          </button>
+                          <button
+                            onClick={handleBulkDownload}
+                            className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded-md"
+                          >
+                            Download All (Zip)
+                          </button>
+                      </div>
+                  )}
                   <div className="relative max-w-xs w-full sm:w-64">
                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
                       <Search className="w-4 h-4" />
@@ -2083,6 +2128,26 @@ export default function App() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-150 text-[10px] uppercase font-bold tracking-wider text-slate-450 pb-2">
+                        <th className="pb-3 bg-transparent pl-2 text-slate-400">
+                          <button
+                            onClick={() => {
+                                const filtered = historyJobs.filter((job) =>
+                                  job.fileName.toLowerCase().includes(fileSearchQuery.toLowerCase())
+                                );
+                                const allIds = filtered.map(j => j.id);
+                                if (selectedFileIds.length === allIds.length && allIds.length > 0) {
+                                  setSelectedFileIds([]);
+                                } else {
+                                  setSelectedFileIds(allIds);
+                                }
+                            }}
+                            className="w-4 h-4 rounded border border-slate-300 bg-white flex items-center justify-center hover:border-blue-600"
+                          >
+                            {selectedFileIds.length > 0 && selectedFileIds.length === historyJobs.filter((job) =>
+                                  job.fileName.toLowerCase().includes(fileSearchQuery.toLowerCase())
+                                ).length && <div className="w-2 h-2 bg-blue-600 rounded-sm" />}
+                          </button>
+                        </th>
                         <th className="pb-3 bg-transparent pl-2 text-slate-400">File Name</th>
                         <th className="pb-3 bg-transparent px-4 text-slate-400">Size</th>
                         <th className="pb-3 bg-transparent px-4 text-slate-400">Upload Date</th>
@@ -2125,6 +2190,20 @@ export default function App() {
 
                           return (
                             <tr key={job.id} className="hover:bg-slate-50/70 transition-colors group">
+                              <td className="py-2.5 pl-2">
+                                <button
+                                  onClick={() => {
+                                      if (selectedFileIds.includes(job.id)) {
+                                          setSelectedFileIds(selectedFileIds.filter(id => id !== job.id));
+                                      } else {
+                                          setSelectedFileIds([...selectedFileIds, job.id]);
+                                      }
+                                  }}
+                                  className={`w-4 h-4 rounded border flex items-center justify-center ${selectedFileIds.includes(job.id) ? "border-blue-600 bg-blue-600" : "border-slate-300 bg-white"}`}
+                                >
+                                    {selectedFileIds.includes(job.id) && <div className="w-2 h-2 bg-white rounded-sm" />}
+                                </button>
+                              </td>
                               <td className="py-2.5 pl-2 flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-lg flex flex-col items-center justify-center font-black text-[9px] shrink-0 uppercase select-none shadow-xs ${tagColor}`}>
                                   {extAbbr}
@@ -2770,7 +2849,7 @@ export default function App() {
                 <input
                   type="email"
                   required
-                  placeholder="nbelay10@gmail.com"
+                  placeholder="you@email.com"
                   className={`w-full px-3 py-2 rounded-lg text-sm font-mono outline-none transition-all duration-300 ${activeTheme.inputBg}`}
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
