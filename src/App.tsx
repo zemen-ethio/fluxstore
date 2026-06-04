@@ -459,7 +459,7 @@ export default function App() {
     if (files.length === 0) return;
 
     setAlertMsg(null);
-    setIsTransferring(true);
+    //setIsTransferring(true); // Removed auto-trigger
     setTransferProgress(0);
 
     // Predict correct preset/method for the primary file to keep the manual UI form synced nicely
@@ -488,170 +488,9 @@ export default function App() {
     }
     
     setUploadPreset(matchedPreset);
-
-    const uid = clientAuth.currentUser?.uid || "unauthenticated";
-    const uploadedJobs: CompressionJob[] = [];
-    let updatedUser = user;
-
-    // We will track the individual progress of each file to compute accurate overall progress.
-    const fileProgresses = new Array(files.length).fill(0);
-
-    const updateOverallProgress = () => {
-      const sum = fileProgresses.reduce((a, b) => a + b, 0);
-      const overall = Math.round(sum / files.length);
-      setTransferProgress(overall);
-    };
-
-    const uploadPromises = files.map((file, index) => {
-      let matchedMethod: "zstd" | "WebP" | "H.265" | "zlib" = "zlib";
-      if (file.type.startsWith("image/")) {
-        matchedMethod = "WebP";
-      } else if (file.type.startsWith("video/")) {
-        matchedMethod = "H.265";
-      } else if (file.type.startsWith("audio/")) {
-        matchedMethod = "zstd";
-      } else {
-        matchedMethod = "zlib";
-      }
-
-      const storageRef = ref(clientStorage, `compressed-files/${uid}/${Date.now()}_${index}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      return new Promise<{ success: boolean; name: string; errorMsg?: string }>((resolve) => {
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const fileProgress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            fileProgresses[index] = fileProgress;
-            updateOverallProgress();
-          },
-          async (error) => {
-            console.warn(`Firebase Storage upload encountered an issue for ${file.name}. Falling back seamlessly to server-side core processing:`, error);
-            
-            // Graceful high-fidelity backend upload fallback
-            try {
-              let textData = "";
-              if (file.type.startsWith("text/")) {
-                try {
-                  textData = await file.text();
-                } catch (err) {
-                  console.warn(`Could not read text content of file ${file.name}`, err);
-                }
-              }
-
-              const payload = {
-                fileName: file.name,
-                fileType: file.type || "binary/octet-stream",
-                fileContent: textData || undefined,
-                method: matchedMethod,
-                simulatedSize: file.size,
-                storageUrl: "" // Indicate fallback server-side optimization
-              };
-
-              const res = await appFetch("/api/compress/process", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-              });
-
-              if (res.ok) {
-                const data = await res.json();
-                uploadedJobs.push(data.job);
-                updatedUser = data.user;
-                resolve({ success: true, name: file.name });
-              } else {
-                const err = await res.json();
-                resolve({ success: false, name: file.name, errorMsg: err.error || "Failed processing uploaded file." });
-              }
-            } catch (fallbackErr: any) {
-              let msg = error.message;
-              if (error.code === "storage/unauthorized" || error.message?.toLowerCase().includes("unauthorized") || error.message?.toLowerCase().includes("permission")) {
-                msg = "Upload unauthorized. Since your Firebase Storage bucket is set up in production mode, uploads require authenticated users. Please register or sign in with an 'Email/Password' account first to authorize file uploads!";
-              }
-              resolve({ success: false, name: file.name, errorMsg: msg });
-            }
-          },
-          async () => {
-            try {
-              const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              
-              let textData = "";
-              if (file.type.startsWith("text/")) {
-                try {
-                  textData = await file.text();
-                } catch (err) {
-                  console.warn(`Could not read text content of file ${file.name}`, err);
-                }
-              }
-
-              const payload = {
-                fileName: file.name,
-                fileType: file.type || "binary/octet-stream",
-                fileContent: textData || undefined,
-                method: matchedMethod,
-                simulatedSize: file.size,
-                storageUrl: downloadUrl
-              };
-
-              const res = await appFetch("/api/compress/process", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-              });
-
-              if (res.ok) {
-                const data = await res.json();
-                uploadedJobs.push(data.job);
-                updatedUser = data.user;
-                resolve({ success: true, name: file.name });
-              } else {
-                const err = await res.json();
-                resolve({ success: false, name: file.name, errorMsg: err.error || "Failed processing uploaded file." });
-              }
-            } catch (err: any) {
-              resolve({ success: false, name: file.name, errorMsg: err.message || "An error occurred during file upload." });
-            }
-          }
-        );
-      });
-    });
-
-    try {
-      const results = await Promise.all(uploadPromises);
-      const successes = results.filter(r => r.success);
-      const failures = results.filter(r => !r.success);
-
-      if (successes.length > 0) {
-        setUser(updatedUser);
-        setHistoryJobs(prev => [...uploadedJobs, ...prev]);
-        setRatedJobId(uploadedJobs[0].id);
-      }
-
-      if (failures.length === 0) {
-        setAlertMsg({
-          type: "success",
-          text: `Batch successful! Successfully uploaded and processed ${files.length} file(s) in parallel via cloud optimization codecs.`
-        });
-      } else {
-        const failMsgs = failures.map(f => `${f.name} (${f.errorMsg})`).join("; ");
-        if (successes.length > 0) {
-          setAlertMsg({
-            type: "success",
-            text: `Batch partially successful! Processed ${successes.length} file(s) smoothly. Failed for ${failures.length} file(s): [ ${failMsgs} ]`
-          });
-        } else {
-          setAlertMsg({
-            type: "error",
-            text: `Batch failed! Fails logic details: [ ${failMsgs} ]`
-          });
-        }
-      }
-    } catch (err: any) {
-      setAlertMsg({ type: "error", text: err.message || "An error occurred during batch file uploads." });
-    } finally {
-      setIsTransferring(false);
-      setTransferProgress(0);
-    }
+    
+    // Auto-compilation logic was already bypassed, but ensuring no uploads trigger here.
+    setAlertMsg({ type: "success", text: "Files added. Please enter details and click 'Transfer' to begin." });
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -668,6 +507,7 @@ export default function App() {
   };
 
   const executeBackendCompression = async (recipientsList: string[], title: string) => {
+    console.log("executeBackendCompression called", { recipientsList, title });
     try {
       let matchedMethod: "zstd" | "WebP" | "H.265" | "zlib" = "zlib";
       if (uploadPreset === "text_doc") matchedMethod = "zlib";

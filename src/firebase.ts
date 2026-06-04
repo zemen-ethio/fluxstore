@@ -15,4 +15,5 @@ export const storage = getStorage(app);
 // Initialize Firestore with Force Long Polling to prevent streaming timeout disconnects
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+});
+
