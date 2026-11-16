@@ -1,9 +1,159 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation Helper: User
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['id', 'email', 'plan', 'quotaUsed', 'quotaLimit', 'apiCallsUsed', 'apiCallsLimit']) &&
+             data.keys().hasOnly(['id', 'email', 'plan', 'quotaUsed', 'quotaLimit', 'apiCallsUsed', 'apiCallsLimit']) &&
+             data.id is string && data.id == userId && data.id.size() <= 128 &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 256 &&
+             data.plan is string && data.plan in ['Free', 'Pro', 'Enterprise'] &&
+             data.quotaUsed is int && data.quotaUsed >= 0 &&
+             data.quotaLimit is int && data.quotaLimit > 0 &&
+             data.apiCallsUsed is int && data.apiCallsUsed >= 0 &&
+             data.apiCallsLimit is int && data.apiCallsLimit > 0;
+    }
+
+    // Validation Helper: CompressionJob
+    function isValidCompressionJob(data) {
+      return data.keys().hasAll(['userId', 'fileName', 'fileType', 'originalSize', 'compressedSize', 'method', 'compressionRatio', 'savingsPercent', 'status', 'aiRecommended', 'timestamp']) &&
+             data.keys().hasOnly(['userId', 'fileName', 'fileType', 'originalSize', 'compressedSize', 'method', 'compressionRatio', 'savingsPercent', 'status', 'aiRecommended', 'timestamp', 'title', 'recipients', 'storageUrl', 'expiryDays', 'maxDownloads', 'downloadCount', 'speedMs', 'costSpent']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId == request.auth.uid &&
+             data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 256 &&
+             data.fileType is string && data.fileType.size() <= 128 &&
+             data.originalSize is number && data.originalSize >= 0 &&
+             data.compressedSize is number && data.compressedSize >= 0 &&
+             data.method is string && data.method in ['fast', 'ai', 'zstd', 'WebP', 'H.265', 'zlib', 'none'] &&
+             data.compressionRatio is number && data.compressionRatio >= 0 && data.compressionRatio <= 10 &&
+             data.savingsPercent is number && data.savingsPercent >= 0 && data.savingsPercent <= 100 &&
+             data.status is string && data.status in ['completed', 'failed', 'processing'] &&
+             data.aiRecommended is bool &&
+             data.timestamp is timestamp &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 256)) &&
+             (!('recipients' in data) || (data.recipients is list && data.recipients.size() <= 20 && (data.recipients.size() == 0 || (data.recipients[0] is string && data.recipients[0].size() <= 256)))) &&
+             (!('storageUrl' in data) || (data.storageUrl is string && data.storageUrl.size() <= 2048)) &&
+             (!('expiryDays' in data) || (data.expiryDays is number && data.expiryDays >= 1 && data.expiryDays <= 365)) &&
+             (!('maxDownloads' in data) || (data.maxDownloads is number && data.maxDownloads >= 1 && data.maxDownloads <= 10000)) &&
+             (!('downloadCount' in data) || (data.downloadCount is number && data.downloadCount >= 0 && data.downloadCount <= 10000)) &&
+             (!('speedMs' in data) || (data.speedMs is number && data.speedMs >= 0)) &&
+             (!('costSpent' in data) || (data.costSpent is number && data.costSpent >= 0));
+    }
+
+    // Validation Helper: Transfer
+    function isValidTransfer(data) {
+      return data.keys().hasAll(['userId', 'senderEmail', 'recipientEmail', 'fileName', 'downloadUrl', 'timestamp']) &&
+             data.keys().hasOnly(['userId', 'senderEmail', 'recipientEmail', 'fileName', 'downloadUrl', 'timestamp']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId == request.auth.uid &&
+             data.senderEmail is string && data.senderEmail.size() > 0 && data.senderEmail.size() <= 256 &&
+             data.recipientEmail is string && data.recipientEmail.size() > 0 && data.recipientEmail.size() <= 256 &&
+             data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 256 &&
+             data.downloadUrl is string && data.downloadUrl.size() > 0 && data.downloadUrl.size() <= 2048 &&
+             data.timestamp is timestamp;
+    }
+
+    // Validation Helper: UsageLog
+    function isValidUsageLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'userId', 'action', 'bytesProcessed', 'creditsCost']) &&
+             data.keys().hasOnly(['id', 'timestamp', 'userId', 'action', 'bytesProcessed', 'creditsCost']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.timestamp is timestamp &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId == request.auth.uid &&
+             data.action is string && data.action.size() > 0 && data.action.size() <= 128 &&
+             data.bytesProcessed is int && data.bytesProcessed >= 0 &&
+             data.creditsCost is number && data.creditsCost >= 0;
+    }
+
+    // Validation Helper: AnalyticsEvent
+    function isValidAnalyticsEvent(data) {
+      return data.keys().hasAll(['id', 'userId', 'timestamp', 'eventType', 'payload']) &&
+             data.keys().hasOnly(['id', 'userId', 'timestamp', 'eventType', 'payload']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId == request.auth.uid &&
+             data.timestamp is timestamp &&
+             data.eventType is string && data.eventType.size() > 0 && data.eventType.size() <= 128 &&
+             data.payload is map;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming(), userId) && incoming().plan == 'Free';
+      allow update: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming(), userId) &&
+                       incoming().id == existing().id && incoming().plan == existing().plan &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['quotaUsed', 'apiCallsUsed']);
+      allow delete: if false;
+    }
+
+    match /jobs/{jobId} {
+      allow get: if isSignedIn() && isValidId(jobId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(jobId) && isValidCompressionJob(incoming()) && incoming().timestamp == request.time;
+      allow update: if isVerifiedUser() && isValidId(jobId) && isValidCompressionJob(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().timestamp == existing().timestamp &&
+                       incoming().status == existing().status &&
+                       (
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['downloadCount']) &&
+                          ((!('downloadCount' in existing()) && incoming().downloadCount == 1) ||
+                           ('downloadCount' in existing() && incoming().downloadCount == existing().downloadCount + 1))) ||
+                         (!(existing().status in ['completed', 'failed']) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'recipients', 'expiryDays', 'maxDownloads']))
+                       );
+      allow delete: if isVerifiedUser() && isValidId(jobId) && existing().userId == request.auth.uid;
+    }
+
+    match /transfers/{transferId} {
+      allow get: if isSignedIn() && isValidId(transferId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(transferId) && isValidTransfer(incoming()) && incoming().timestamp == request.time;
+      allow update: if isVerifiedUser() && isValidId(transferId) && isValidTransfer(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().timestamp == existing().timestamp &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['fileName', 'downloadUrl']);
+      allow delete: if isVerifiedUser() && isValidId(transferId) && existing().userId == request.auth.uid;
+    }
+
+    match /logs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(logId) && isValidUsageLog(incoming()) && incoming().timestamp == request.time;
+      allow update, delete: if false;
+    }
+
+    match /analytics/{eventId} {
+      allow get: if isSignedIn() && isValidId(eventId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(eventId) && isValidAnalyticsEvent(incoming()) && incoming().timestamp == request.time;
+      allow update, delete: if false;
     }
   }
 }
-

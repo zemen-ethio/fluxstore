@@ -1,45 +1,68 @@
 import express from "express";
 import path from "path";
 import zlib from "zlib";
-import { Resend } from 'resend';
+import nodemailer from "nodemailer";
+import { setupRoutes } from "./src/api/routes";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { initializeApp } from "firebase/app";
-import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, updateDoc, getDocFromServer } from "firebase/firestore";
 import fs from "fs";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const db: any = null;
 
-// Initialize Firebase
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = initializeApp(config);
-    db = initializeFirestore(firebaseApp, {
-      databaseId: "(default)",
-    });
-    console.log("Firebase client initialized successfully.");
-    
-    // Test connection as instructed by skill guidelines (Disabled for now)
-    /*
-    getDocFromServer(doc(db, "test", "connection")).catch((error) => {
-      if (error instanceof Error && error.message.includes("offline")) {
-        console.error("Please check your Firebase configuration. Server offline.");
-      }
-    });
-    */
-  } else {
-    console.warn("firebase-applet-config.json file not found. Running in offline/in-memory mode.");
-  }
-} catch (err) {
-  console.error("Failed to initialize Firebase:", err);
+// Persistent local store for uploaded files and shareable transfer links
+const DATA_DIR = path.join(process.cwd(), ".fluxstore-data");
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+const FILES_INDEX_PATH = path.join(DATA_DIR, "files.json");
+const TRANSFERS_INDEX_PATH = path.join(DATA_DIR, "transfers.json");
+
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+interface StoredFileMeta {
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  diskPath: string;
+  createdAt: string;
 }
+
+interface TransferRecord {
+  id: string;
+  fileName: string;
+  title?: string;
+  storageUrl: string;
+  expiryDays?: number;
+  maxDownloads?: number;
+  downloadCount: number;
+  createdAt: string;
+}
+
+const loadJsonMap = <T>(filePath: string): Record<string, T> => {
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    }
+  } catch (err) {
+    console.warn(`Failed to load ${filePath}:`, err);
+  }
+  return {};
+};
+
+const saveJsonMap = (filePath: string, data: Record<string, any>) => {
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.warn(`Failed to save ${filePath}:`, err);
+  }
+};
+
+const filesRegistry: Record<string, StoredFileMeta> = loadJsonMap<StoredFileMeta>(FILES_INDEX_PATH);
+const transfersRegistry: Record<string, TransferRecord> = loadJsonMap<TransferRecord>(TRANSFERS_INDEX_PATH);
 
 // Initialize GoogleGenAI SDK
 // API key is accessed via process.env.GEMINI_API_KEY
@@ -57,6 +80,10 @@ if (apiKey) {
 } else {
   console.warn("GEMINI_API_KEY is not defined. The AI Advisor will run with rich local heuristics.");
 }
+
+// Initialize the new modular routes (moved below)
+
+// Mounting Vite middleware (keep existing logic)
 
 // Memory database states (used as local high-speed cache/backup)
 const usersStore: Record<string, any> = {
@@ -180,42 +207,19 @@ const rlWeights = {
   zlib: 0.50,
 };
 
-// Firestore integration sync helpers
+// Local cache sync helpers (Firestore writes are performed by authenticated clients)
 const saveUser = async (email: string, userData: any) => {
   const emailLower = email.trim().toLowerCase();
-  
-  if (!emailLower) {
-    console.warn("Skipping saveUser for empty email.");
-    return;
-  }
-
+  if (!emailLower) return;
   usersStore[emailLower] = userData;
-  if (db) {
-    try {
-      const userDocRef = doc(db, "users", emailLower);
-      await setDoc(userDocRef, userData);
-    } catch (err) {
-      console.error("Firestore saveUser failed for path users/" + emailLower + ":", err);
-    }
-  }
 };
 
 const saveJob = async (job: any) => {
-  // Prevent duplicate unshift
   if (!compressionJobs.some(j => j.id === job.id)) {
     compressionJobs.unshift(job);
   } else {
-    // Update existing
     const idx = compressionJobs.findIndex(j => j.id === job.id);
     if (idx !== -1) compressionJobs[idx] = job;
-  }
-  if (db) {
-    try {
-      const jobDocRef = doc(db, "jobs", job.id);
-      await setDoc(jobDocRef, job);
-    } catch (err) {
-      console.error("Firestore saveJob failed for path jobs/" + job.id + ":", err);
-    }
   }
 };
 
@@ -224,91 +228,105 @@ const deleteJob = async (jobId: string) => {
   if (idx !== -1) {
     compressionJobs.splice(idx, 1);
   }
-  if (db) {
-    try {
-      await deleteDoc(doc(db, "jobs", jobId));
-    } catch (err) {
-      console.error("Firestore deleteJob failed:", err);
-    }
-  }
 };
 
 const saveLog = async (log: any) => {
   if (!usageLogs.some(l => l.id === log.id)) {
     usageLogs.unshift(log);
   }
-  if (db) {
-    try {
-      const logDocRef = doc(db, "logs", log.id);
-      await setDoc(logDocRef, log);
-    } catch (err) {
-      console.error("Firestore saveLog failed for path logs/" + log.id + ":", err);
-    }
-  }
 };
 
-// Synchronization routine on server boot
-async function startFirestoreSync() {
-  if (!db) return;
-  try {
-    console.log("Synchronizing Firestore collections...");
-    
-    // 1. Sync users
-    const usersSnap = await getDocs(collection(db, "users"));
-    if (usersSnap.size > 0) {
-      usersSnap.forEach((docSnap) => {
-        usersStore[docSnap.id] = docSnap.data();
-      });
-      console.log(`Synced ${usersSnap.size} user profiles from Firestore.`);
-    } else {
-      for (const [email, user] of Object.entries(usersStore)) {
-        await setDoc(doc(db, "users", email), user);
-      }
-      console.log("Seeded initial users into Firestore.");
-    }
+// Initialize the new modular routes
+setupRoutes(app, {
+  db, 
+  ai, 
+  usersStore, 
+  compressionJobs, 
+  usageLogs, 
+  rlWeights, 
+  saveUser,
+  saveJob,
+  deleteJob,
+  saveLog,
+  getActiveUser
+});
 
-    // 2. Sync compression jobs
-    const jobsSnap = await getDocs(collection(db, "jobs"));
-    if (jobsSnap.size > 0) {
-      const dbJobs: any[] = [];
-      jobsSnap.forEach((docSnap) => {
-        dbJobs.push(docSnap.data());
-      });
-      dbJobs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      compressionJobs = dbJobs;
-      console.log(`Synced ${dbJobs.length} jobs from Firestore.`);
-    } else {
-      for (const job of compressionJobs) {
-        await setDoc(doc(db, "jobs", job.id), job);
-      }
-      console.log("Seeded initial jobs into Firestore.");
-    }
+// Binary upload endpoint (must precede express.json so raw bytes are preserved)
+app.post(
+  "/api/upload",
+  express.raw({ type: "*/*", limit: "50mb" }),
+  (req, res) => {
+    try {
+      const rawHeaderName = req.headers["x-file-name"];
+      const decodedName =
+        typeof rawHeaderName === "string" && rawHeaderName.trim()
+          ? decodeURIComponent(rawHeaderName)
+          : `upload_${Date.now()}.bin`;
+      const safeFileName = path.basename(decodedName).replace(/[^\w.\-() ]+/g, "_") || "download.bin";
+      const fileId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const diskPath = path.join(UPLOADS_DIR, `${fileId}_${safeFileName}`);
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
 
-    // 3. Sync logs
-    const logsSnap = await getDocs(collection(db, "logs"));
-    if (logsSnap.size > 0) {
-      const dbLogs: any[] = [];
-      logsSnap.forEach((docSnap) => {
-        dbLogs.push(docSnap.data());
+      fs.writeFileSync(diskPath, buffer);
+
+      const meta: StoredFileMeta = {
+        fileId,
+        fileName: safeFileName,
+        mimeType: (req.headers["content-type"] as string) || "application/octet-stream",
+        size: buffer.length,
+        diskPath,
+        createdAt: new Date().toISOString(),
+      };
+      filesRegistry[fileId] = meta;
+      saveJsonMap(FILES_INDEX_PATH, filesRegistry);
+
+      res.json({
+        success: true,
+        fileId,
+        url: `/api/files/${fileId}`,
       });
-      dbLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      usageLogs = dbLogs;
-      console.log(`Synced ${dbLogs.length} usage logs from Firestore.`);
-    } else {
-      for (const log of usageLogs) {
-        await setDoc(doc(db, "logs", log.id), log);
-      }
-      console.log("Seeded initial logs into Firestore.");
+    } catch (err) {
+      console.error("File upload failed:", err);
+      res.status(500).json({ error: "Failed to store uploaded file." });
     }
-  } catch (err) {
-    console.error("Firestore startup sync failed:", err);
   }
-}
+);
 
-// Trigger background synchronization
-startFirestoreSync();
+app.get("/api/files/:fileId", (req, res) => {
+  const { fileId } = req.params;
+  if (!/^[a-zA-Z0-9_\-]+$/.test(fileId)) {
+    return res.status(400).send("Invalid file identifier.");
+  }
+  const meta = filesRegistry[fileId];
+  if (!meta || !fs.existsSync(meta.diskPath)) {
+    return res.status(404).send("File not found.");
+  }
+  res.setHeader("Content-Type", meta.mimeType || "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${meta.fileName.replace(/"/g, "")}"`);
+  res.sendFile(meta.diskPath);
+});
 
 app.use(express.json({ limit: "50mb" }));
+
+// Register a transfer link created by an authenticated client
+app.post("/api/transfers/register", (req, res) => {
+  const { id, fileName, title, storageUrl, expiryDays, maxDownloads, downloadCount, createdAt } = req.body || {};
+  if (!id || typeof id !== "string" || !/^[a-zA-Z0-9_\-]+$/.test(id)) {
+    return res.status(400).json({ error: "Valid transfer id is required." });
+  }
+  transfersRegistry[id] = {
+    id,
+    fileName: typeof fileName === "string" ? fileName : "download",
+    title: typeof title === "string" ? title : fileName,
+    storageUrl: typeof storageUrl === "string" ? storageUrl : "",
+    expiryDays: Number(expiryDays) || 7,
+    maxDownloads: Number(maxDownloads) || 5,
+    downloadCount: Number(downloadCount) || 0,
+    createdAt: typeof createdAt === "string" ? createdAt : new Date().toISOString(),
+  };
+  saveJsonMap(TRANSFERS_INDEX_PATH, transfersRegistry);
+  res.json({ success: true });
+});
 
 // Enable CORS/headers setup with user session email tracking
 app.use((req, res, next) => {
@@ -325,43 +343,6 @@ app.use((req, res, next) => {
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
-});
-
-app.post("/api/send-email", async (req, res) => {
-  const { to, subject, link, sender, fileName, fileSize } = req.body;
-  if (!process.env.RESEND_API_KEY) {
-    return res.status(500).json({ error: "Email service not configured (Resend API Key missing)" });
-  }
-  const resend = new Resend(process.env.RESEND_API_KEY);
-
-  try {
-    const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
-      to: to,
-      replyTo: sender,
-      subject: subject,
-      html: `
-        <div style="font-family: sans-serif; color: #333;">
-          <p><strong>Recipients:</strong> ${Array.isArray(to) ? to.join(", ") : to}</p>
-          <p><strong>Download link:</strong> <a href="${link}">${link}</a></p>
-          <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;">
-          <p><strong>1 item</strong></p>
-          <p>${fileName || "File"} (${fileSize ? (fileSize / 1024).toFixed(1) + " KB" : "Unknown size"})</p>
-        </div>
-      `,
-    });
-
-    console.log("Resend API response:", { data, error });
-
-    if (error) {
-      console.error("Resend API error:", error);
-      return res.status(500).json({ error: error.message });
-    }
-    res.json({ success: true, data });
-  } catch (err) {
-    console.error("Email sending failed:", err);
-    res.status(500).json({ error: "Failed to send email" });
-  }
 });
 
 // fetch user dashboard info
@@ -848,6 +829,124 @@ app.get("/api/compress/shared-job/:id", (req, res) => {
     return res.status(404).json({ error: "Shared transfer session expired or not found." });
   }
   res.json({ success: true, job });
+});
+
+app.get("/api/download/:id", (req, res) => {
+  const { id } = req.params;
+  if (!/^[a-zA-Z0-9_\-]+$/.test(id)) {
+    return res.status(400).send("Invalid transfer ID.");
+  }
+
+  try {
+    const registered = transfersRegistry[id];
+    const fallbackJob = !registered ? compressionJobs.find((j) => j.id === id) : null;
+    const jobData: any = registered || fallbackJob;
+
+    if (!jobData) {
+      return res.status(404).send("File transfer expired or not found.");
+    }
+
+    // Check expiry
+    const createdRaw = jobData.createdAt || jobData.timestamp;
+    if (jobData.expiryDays && createdRaw) {
+      const timestamp = createdRaw.toDate ? createdRaw.toDate() : new Date(createdRaw);
+      const expiryDate = new Date(timestamp.getTime() + jobData.expiryDays * 24 * 60 * 60 * 1000);
+      if (new Date() > expiryDate) {
+        return res.status(403).send("Transfer link has expired.");
+      }
+    }
+
+    // Check download limit
+    const maxDownloads = jobData.maxDownloads || 5;
+    const currentCount = jobData.downloadCount || 0;
+    if (currentCount >= maxDownloads) {
+      return res.status(403).send("Transfer download limit reached.");
+    }
+
+    // Increment count
+    if (registered) {
+      registered.downloadCount = currentCount + 1;
+      saveJsonMap(TRANSFERS_INDEX_PATH, transfersRegistry);
+    }
+
+    const storageUrl: string = jobData.storageUrl || "";
+    if (!storageUrl || storageUrl.includes("fluxstore-ai-mock-storage.example.com")) {
+      return res.status(404).send("File URL not available for this transfer.");
+    }
+
+    if (storageUrl.startsWith("/api/files/")) {
+      const fileId = storageUrl.replace("/api/files/", "");
+      const meta = filesRegistry[fileId];
+      if (meta && fs.existsSync(meta.diskPath)) {
+        res.setHeader("Content-Type", meta.mimeType || "application/octet-stream");
+        res.setHeader("Content-Disposition", `attachment; filename="${meta.fileName.replace(/"/g, "")}"`);
+        return res.sendFile(meta.diskPath);
+      }
+      return res.status(404).send("Stored file not found.");
+    }
+
+    return res.redirect(storageUrl);
+  } catch (err) {
+    console.error("Error fetching download link:", err);
+    return res.status(500).send("Error fetching transfer.");
+  }
+});
+
+// Endpoint to send email notifications for file transfers
+app.post("/api/email/send", async (req, res) => {
+  const { to, from, subject, message, link } = req.body;
+
+  if (!to) {
+    return res.status(400).json({ error: "Recipient email is required" });
+  }
+
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  
+  if (smtpHost && smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465, // true for 465, false for other ports
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      const info = await transporter.sendMail({
+        from: `"FluxStore AI" <${smtpUser}>`, 
+        to,
+        subject: subject || 'You received a file via FluxStore AI',
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>You've received a file transfer!</h2>
+            <p>${from ? `<strong>${from}</strong>` : 'Someone'} has sent you a file via FluxStore AI.</p>
+            ${message ? `<p><em>"${message}"</em></p>` : ''}
+            <br />
+            <a href="${link}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Download File</a>
+            <br /><br />
+            <p style="color: #666; font-size: 12px;">This link is valid for 7 days.</p>
+          </div>
+        `,
+      });
+      res.json({ success: true, message: "Email sent successfully via Nodemailer", data: info });
+    } catch (error) {
+      console.error("Nodemailer error:", error);
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  } else {
+    // Mock successful email sending for development if no SMTP credentials are present
+    console.log(`[MOCK EMAIL] To: ${to} | Subject: ${subject} | Link: ${link}`);
+    res.json({ 
+      success: true, 
+      message: "Mock email sent successfully. To send real emails, add SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS to your Secrets.",
+      mock: true
+    });
+  }
 });
 
 // Streaming compression endpoint

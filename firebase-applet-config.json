@@ -1,9 +1,10 @@
 {
-  "projectId": "aqueous-odyssey-crtgb",
-  "appId": "1:625746893060:web:3e9b21ff6fe4754904d851",
-  "apiKey": "AIzaSyBwXqnscyZwUkSgux8Hm7ilmc6rEEgR004",
-  "authDomain": "aqueous-odyssey-crtgb.firebaseapp.com",
-  "storageBucket": "aqueous-odyssey-crtgb.firebasestorage.app",
-  "messagingSenderId": "625746893060",
+  "projectId": "gen-lang-client-0697233683",
+  "appId": "1:775382422629:web:f3bb6a4964e4ca5c1fa28c",
+  "apiKey": "AIzaSyCGwrsMa6BzpY6gzuIZ5WMrKi_2PwkaV2E",
+  "authDomain": "gen-lang-client-0697233683.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-fluxstoreai-11bbe2c2-a284-42a2-a2dd-e8f8a4b71046",
+  "storageBucket": "gen-lang-client-0697233683.firebasestorage.app",
+  "messagingSenderId": "775382422629",
   "measurementId": ""
 }

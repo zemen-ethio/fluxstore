@@ -2,52 +2,55 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "User profile with quota allocations and usage logs",
+      "description": "User profile with quota allocations and usage metrics",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "email": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
         "plan": { "type": "string", "enum": ["Free", "Pro", "Enterprise"] },
         "quotaUsed": { "type": "integer" },
         "quotaLimit": { "type": "integer" },
         "apiCallsUsed": { "type": "integer" },
-        "apiCallsLimit": { "type": "integer" },
-        "password": { "type": "string" }
+        "apiCallsLimit": { "type": "integer" }
       },
       "required": ["id", "email", "plan", "quotaUsed", "quotaLimit", "apiCallsUsed", "apiCallsLimit"]
     },
     "CompressionJob": {
       "title": "CompressionJob",
-      "description": "Record of a file compression job",
+      "description": "Record of a file compression and transfer job",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "userId": { "type": "string", "maxLength": 128 },
         "timestamp": { "type": "string", "format": "date-time" },
-        "fileName": { "type": "string" },
-        "fileType": { "type": "string" },
-        "originalSize": { "type": "integer" },
-        "compressedSize": { "type": "integer" },
-        "method": { "type": "string", "enum": ["zstd", "WebP", "H.265", "zlib", "none"] },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "fileType": { "type": "string", "maxLength": 128 },
+        "originalSize": { "type": "number" },
+        "compressedSize": { "type": "number" },
+        "method": { "type": "string", "enum": ["fast", "ai", "zstd", "WebP", "H.265", "zlib", "none"] },
         "compressionRatio": { "type": "number" },
-        "savingsPercent": { "type": "integer" },
-        "speedMs": { "type": "integer" },
+        "savingsPercent": { "type": "number" },
+        "speedMs": { "type": "number" },
         "costSpent": { "type": "number" },
         "status": { "type": "string", "enum": ["completed", "failed", "processing"] },
-        "userId": { "type": "string" },
         "aiRecommended": { "type": "boolean" },
-        "storageUrl": { "type": "string" }
+        "title": { "type": "string", "maxLength": 256 },
+        "recipients": { "type": "array" },
+        "storageUrl": { "type": "string", "maxLength": 2048 },
+        "expiryDays": { "type": "integer" },
+        "maxDownloads": { "type": "integer" },
+        "downloadCount": { "type": "integer" }
       },
-      "required": ["id", "timestamp", "fileName", "fileType", "originalSize", "compressedSize", "method", "compressionRatio", "savingsPercent", "speedMs", "status", "userId", "aiRecommended"]
+      "required": ["userId", "timestamp", "fileName", "fileType", "originalSize", "compressedSize", "method", "compressionRatio", "savingsPercent", "status", "aiRecommended"]
     },
     "UsageLog": {
       "title": "UsageLog",
       "description": "Audit and credit logger for user compression requests",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128 },
         "timestamp": { "type": "string", "format": "date-time" },
-        "userId": { "type": "string" },
-        "action": { "type": "string" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 128 },
         "bytesProcessed": { "type": "integer" },
         "creditsCost": { "type": "number" }
       },
@@ -58,48 +61,49 @@
       "description": "Captured dynamic analytics events for model insights",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
         "timestamp": { "type": "string", "format": "date-time" },
-        "eventType": { "type": "string" },
+        "eventType": { "type": "string", "maxLength": 128 },
         "payload": { "type": "object" }
       },
-      "required": ["id", "timestamp", "eventType", "payload"]
+      "required": ["id", "userId", "timestamp", "eventType", "payload"]
     },
     "Transfer": {
       "title": "Transfer",
       "description": "Record of a file transfer",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "senderEmail": { "type": "string" },
-        "recipientEmail": { "type": "string" },
-        "fileName": { "type": "string" },
-        "downloadUrl": { "type": "string" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "senderEmail": { "type": "string", "maxLength": 256 },
+        "recipientEmail": { "type": "string", "maxLength": 256 },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "downloadUrl": { "type": "string", "maxLength": 2048 },
         "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "senderEmail", "recipientEmail", "fileName", "downloadUrl", "timestamp"]
+      "required": ["userId", "senderEmail", "recipientEmail", "fileName", "downloadUrl", "timestamp"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
-      "description": "Stores user credential hashes, limits and active status"
+      "description": "Stores user profile, plan limits, and usage counters"
     },
     "/jobs/{jobId}": {
       "schema": "CompressionJob",
-      "description": "Compression jobs with savings metrics"
+      "description": "Compression and transfer jobs owned by authenticated users"
     },
     "/logs/{logId}": {
       "schema": "UsageLog",
-      "description": "Audit trails for server requests"
+      "description": "Audit trails for user requests"
     },
     "/analytics/{eventId}": {
       "schema": "AnalyticsEvent",
-      "description": "Reinforcement learning telemetry"
+      "description": "Telemetry events scoped to user"
     },
     "/transfers/{transferId}": {
       "schema": "Transfer",
-      "description": "Record of file transfers"
+      "description": "Record of file transfers owned by authenticated users"
     }
   }
 }
